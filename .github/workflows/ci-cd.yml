@@ -1,56 +1,48 @@
-name: CI + Deploy to Pi 50
+name: Build, Push and Deploy Calculator App
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main" ]   # adjust if you use another branch
+  workflow_dispatch:
 
 jobs:
-  build-test:
-    runs-on: ubuntu-latest
+  build-and-deploy:
+    runs-on: self-hosted   # runs on your Pi runner (192.168.1.51)
+
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install dependencies & run tests
-        run: |
-          pip install -r requirements.txt
-          pytest -q
-
-      - name: Docker build and push to GHCR
-        run: |
-          REPO_OWNER=$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')
-          IMAGE="ghcr.io/${REPO_OWNER}/calculator-flask:latest"
-          echo "Building and pushing $IMAGE"
-          docker buildx build --platform linux/arm64 -t $IMAGE --push .
-
-  deploy:
-    needs: build-test
-    runs-on: [self-hosted, Linux, ARM64, pi-runner]  # Runner on Pi 1.51
-    steps:
-      - name: Checkout repo
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Deploy to Pi 1 (192.168.1.50)
-        env:
-          PI_HOST: ${{ secrets.PI50_HOST }}
-          PI_USER: ${{ secrets.PI50_USER }}
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set REPO_OWNER variable
+        run: echo "REPO_OWNER=$(echo '${GITHUB_REPOSITORY_OWNER}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+      - name: Build and Push Docker Image (ARM64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/arm64
+          tags: ghcr.io/${{ env.REPO_OWNER }}/calculator-flask:latest
+
+      # --- Deploy to Raspberry Pi 192.168.1.50 ---
+      - name: Copy SSH key
         run: |
-          echo "${{ secrets.PI50_SSH_KEY }}" > pi50_key
-          chmod 600 pi50_key
+          echo "${{ secrets.PI_SSH_KEY }}" > key.pem
+          chmod 600 key.pem
 
-          ssh -o StrictHostKeyChecking=no -i pi50_key $PI_USER@$PI_HOST "mkdir -p ~/calc"
-
-          # Copy docker-compose.yml
-          scp -o StrictHostKeyChecking=no -i pi50_key docker-compose.yml $PI_USER@$PI_HOST:~/calc/
-
-          # Deploy
-          ssh -o StrictHostKeyChecking=no -i pi50_key $PI_USER@$PI_HOST "
-            cd ~/calc && \
-            docker compose pull && \
-            docker compose up -d && \
-            docker image prune -f
-          "
+      - name: Deploy to Raspberry Pi (192.168.1.50)
+        run: |
+          ssh -o StrictHostKeyChecking=no -i key.pem ${{ secrets.PI_USER }}@192.168.1.50 << 'EOF'
+            docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }}
+            docker pull ghcr.io/${{ env.REPO_OWNER }}/calculator-flask:latest
+            docker stop calc || true
+            docker rm calc || true
+            docker run -d --name calc -p 5000:5000 ghcr.io/${{ env.REPO_OWNER }}/calculator-flask:latest
+          EOF
