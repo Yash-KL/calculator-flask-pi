@@ -1,112 +1,56 @@
-name: CI-CD to Raspberry Pi
+name: CI + Deploy to Pi 50
 
 on:
   push:
     branches: [ "main" ]
-  pull_request:
-
-permissions:
-  contents: read
-  packages: write  # needed to push to GHCR
 
 jobs:
-  ci-build-push:
+  build-test:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Install deps and run tests
+      - name: Install dependencies & run tests
         run: |
-          python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest
           pytest -q
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push multi-arch image
+      - name: Docker build and push to GHCR
         run: |
-         REPO_OWNER=$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')
-         IMAGE="ghcr.io/${REPO_OWNER}/calculator-flask-pi:latest"
-         echo "Building and pushing ${IMAGE}"
-         docker buildx build \
-           --platform linux/amd64,linux/arm64 \
-           -t "${IMAGE}" \
-           --push .
-        
-
-      - name: Upload docker-compose.yml as artifact (for deploy job)
-        uses: actions/upload-artifact@v4
-        with:
-          name: compose
-          path: docker-compose.yml
+          REPO_OWNER=$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')
+          IMAGE="ghcr.io/${REPO_OWNER}/calculator-flask:latest"
+          echo "Building and pushing $IMAGE"
+          docker buildx build --platform linux/arm64 -t $IMAGE --push .
 
   deploy:
-    needs: ci-build-push
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    needs: build-test
+    runs-on: [self-hosted, Linux, ARM64, pi-runner]  # Runner on Pi 1.51
     steps:
-      - name: Download compose artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: compose
-          path: .
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
-      - name: Install SSH client
-        run: sudo apt-get update -y && sudo apt-get install -y openssh-client
-
-      - name: Add SSH key
-        run: |
-          echo "${{ secrets.PI_SSH_KEY }}" > key.pem
-          chmod 600 key.pem
-
-      - name: Create app dir on Pi
+      - name: Deploy to Pi 1 (192.168.1.50)
         env:
-          PI_HOST: ${{ secrets.PI_HOST }}
-          PI_USER: ${{ secrets.PI_USER }}
+          PI_HOST: ${{ secrets.PI50_HOST }}
+          PI_USER: ${{ secrets.PI50_USER }}
         run: |
-          ssh -o StrictHostKeyChecking=no -i key.pem "$PI_USER@$PI_HOST" "mkdir -p ~/calc"
+          echo "${{ secrets.PI50_SSH_KEY }}" > pi50_key
+          chmod 600 pi50_key
 
-      - name: Copy docker-compose.yml to Pi
-        env:
-          PI_HOST: ${{ secrets.PI_HOST }}
-          PI_USER: ${{ secrets.PI_USER }}
-        run: |
-          scp -o StrictHostKeyChecking=no -i key.pem docker-compose.yml "$PI_USER@$PI_HOST:~/calc/docker-compose.yml"
+          ssh -o StrictHostKeyChecking=no -i pi50_key $PI_USER@$PI_HOST "mkdir -p ~/calc"
 
-      - name: Write .env on Pi with image reference
-        env:
-          PI_HOST: ${{ secrets.PI_HOST }}
-          PI_USER: ${{ secrets.PI_USER }}
-        run: |
-          IMAGE="ghcr.io/${{ github.repository }}:latest"
-          ssh -o StrictHostKeyChecking=no -i key.pem "$PI_USER@$PI_HOST" "echo IMAGE=${IMAGE} > ~/calc/.env"
+          # Copy docker-compose.yml
+          scp -o StrictHostKeyChecking=no -i pi50_key docker-compose.yml $PI_USER@$PI_HOST:~/calc/
 
-      - name: Pull & run on Pi
-        env:
-          PI_HOST: ${{ secrets.PI_HOST }}
-          PI_USER: ${{ secrets.PI_USER }}
-        run: |
-          ssh -o StrictHostKeyChecking=no -i key.pem "$PI_USER@$PI_HOST" '
-            cd ~/calc &&
-            docker compose pull &&
-            docker compose up -d &&
+          # Deploy
+          ssh -o StrictHostKeyChecking=no -i pi50_key $PI_USER@$PI_HOST "
+            cd ~/calc && \
+            docker compose pull && \
+            docker compose up -d && \
             docker image prune -f
-          '
-
-
-
+          "
