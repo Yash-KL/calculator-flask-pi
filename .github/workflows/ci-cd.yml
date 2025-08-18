@@ -32,7 +32,7 @@ jobs:
           context: .
           push: true
           platforms: linux/arm64
-          tags: ghcr.io/${{ github.repository_owner }}/calculator-flask:latest
+          tags: ghcr.io/${{ github.repository_owner | toLowerCase }}/calculator-flask:latest
 
       # Step 5: Deploy to Raspberry Pi (192.168.1.50)
       - name: Deploy to Raspberry Pi
@@ -45,3 +45,4 @@ jobs:
           EOF
         env:
           SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+
