@@ -1,0 +1,45 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Tiny Calculator</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 2rem; }
+      form { display: grid; gap: .75rem; max-width: 360px; }
+      input, select, button { padding: .5rem; font-size: 1rem; }
+      .result { margin-top: 1rem; font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <h1>🐍 Tiny Calculator</h1>
+    <form id="calc-form">
+      <label>First number <input type="number" step="any" name="a" value="1" required /></label>
+      <label>Second number <input type="number" step="any" name="b" value="2" required /></label>
+      <label>
+        Operation
+        <select name="op">
+          <option value="add">Add (+)</option>
+          <option value="sub">Subtract (−)</option>
+          <option value="mul">Multiply (×)</option>
+          <option value="div">Divide (÷)</option>
+        </select>
+      </label>
+      <button type="submit">Calculate</button>
+    </form>
+
+    <div class="result" id="result"></div>
+
+    <script>
+      const form = document.getElementById('calc-form');
+      const out = document.getElementById('result');
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const data = new FormData(form);
+        const qs = new URLSearchParams(data).toString();
+        const res = await fetch(`/api/calc?${qs}`);
+        const json = await res.json();
+        out.textContent = json.error ? `Error: ${json.error}` : `Result: ${json.result}`;
+      });
+    </script>
+  </body>
+</html>

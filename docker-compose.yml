@@ -1,0 +1,6 @@
+services:
+  calculator:
+    image: ${IMAGE}  # injected by the workflow as ghcr.io/OWNER/REPO:latest
+    restart: unless-stopped
+    ports:
+      - "8000:5000"
