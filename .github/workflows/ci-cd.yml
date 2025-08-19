@@ -7,7 +7,8 @@ on:
 jobs:
   build:
     runs-on: self-hosted
-
+    outputs:
+      owner_lc: ${{ steps.set_owner.outputs.owner_lc }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -24,9 +25,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Step 3: Set lowercase repo owner
+      # Step 3: Set lowercase repo owner and create a job output
       - name: Set lowercase owner
-        run: echo "OWNER_LC=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
+        id: set_owner
+        run: |
+          echo "OWNER_LC=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
+          echo "owner_lc=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_OUTPUT
 
       # Step 4: Build & Push Docker image
       - name: Build and Push Docker image
@@ -44,7 +48,7 @@ jobs:
     steps:
       - name: Deploy QA Container
         run: |
-          IMAGE="ghcr.io/${{ github.repository_owner | lower }}/calculator-flask:latest"
+          IMAGE="ghcr.io/${{ needs.build.outputs.owner_lc }}/calculator-flask:latest"
           echo "Deploying $IMAGE"
           docker pull $IMAGE
           docker stop calculator-flask-qa || true
@@ -58,7 +62,7 @@ jobs:
     steps:
       - name: Deploy Staging Container
         run: |
-          IMAGE="ghcr.io/${{ github.repository_owner | lower }}/calculator-flask:latest"
+          IMAGE="ghcr.io/${{ needs.build.outputs.owner_lc }}/calculator-flask:latest"
           docker pull $IMAGE
           docker stop calculator-flask-staging || true
           docker rm calculator-flask-staging || true
@@ -71,12 +75,8 @@ jobs:
     steps:
       - name: Deploy Production Container
         run: |
-          IMAGE="ghcr.io/${{ github.repository_owner | lower }}/calculator-flask:latest"
+          IMAGE="ghcr.io/${{ needs.build.outputs.owner_lc }}/calculator-flask:latest"
           docker pull $IMAGE
           docker stop calculator-flask-prod || true
           docker rm calculator-flask-prod || true
           docker run -d --name calculator-flask-prod -p 5002:5000 $IMAGE
-
-
-
-
