@@ -1,35 +1,50 @@
-name: Multi-Environment CI/CD
+name: CI-CD
 
 on:
   push:
-    branches:
-      - main
+    branches: [ "main" ]
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
+
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Log in to GitHub Container Registry
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+      # Step 1: Set up Docker Buildx
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Build Docker image
-        run: docker build -t ghcr.io/${{ github.repository_owner }}/calculator-flask:latest .
+      # Step 2: Log in to GitHub Container Registry
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Push Docker image
-        run: docker push ghcr.io/${{ github.repository_owner }}/calculator-flask:latest
+      # Step 3: Set lowercase repo owner
+      - name: Set lowercase owner
+        run: echo "OWNER_LC=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
+
+      # Step 4: Build & Push Docker image
+      - name: Build and Push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/arm64
+          tags: ghcr.io/${{ env.OWNER_LC }}/calculator-flask:latest
 
   deploy-qa:
     runs-on: self-hosted
     needs: build
     environment: QA
     steps:
-      - name: Deploy to QA
+      - name: Deploy QA Container
         run: |
-          IMAGE="ghcr.io/${{ github.repository_owner }}/calculator-flask:latest"
-          echo "Using image: $IMAGE"
+          IMAGE="ghcr.io/${{ env.OWNER_LC }}/calculator-flask:latest"
           docker pull $IMAGE
           docker stop calculator-flask-qa || true
           docker rm calculator-flask-qa || true
@@ -38,12 +53,11 @@ jobs:
   deploy-staging:
     runs-on: self-hosted
     needs: deploy-qa
-    environment: staging
+    environment: Staging
     steps:
-      - name: Deploy to Staging
+      - name: Deploy Staging Container
         run: |
-          IMAGE="ghcr.io/${{ github.repository_owner }}/calculator-flask:latest"
-          echo "Using image: $IMAGE"
+          IMAGE="ghcr.io/${{ env.OWNER_LC }}/calculator-flask:latest"
           docker pull $IMAGE
           docker stop calculator-flask-staging || true
           docker rm calculator-flask-staging || true
@@ -52,12 +66,11 @@ jobs:
   deploy-production:
     runs-on: self-hosted
     needs: deploy-staging
-    environment: production
+    environment: Production
     steps:
-      - name: Deploy to Production
+      - name: Deploy Production Container
         run: |
-          IMAGE="ghcr.io/${{ github.repository_owner }}/calculator-flask:latest"
-          echo "Using image: $IMAGE"
+          IMAGE="ghcr.io/${{ env.OWNER_LC }}/calculator-flask:latest"
           docker pull $IMAGE
           docker stop calculator-flask-prod || true
           docker rm calculator-flask-prod || true
