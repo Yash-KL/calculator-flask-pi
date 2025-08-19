@@ -53,7 +53,7 @@ jobs:
           docker pull $IMAGE
           docker stop calculator-flask-qa || true
           docker rm calculator-flask-qa || true
-          docker run -d --name calculator-flask-qa -p 5000:5000 $IMAGE
+          docker run -d --name calculator-flask-qa -p 3000:5000 $IMAGE
 
   deploy-staging:
     runs-on: self-hosted
@@ -66,7 +66,7 @@ jobs:
           docker pull $IMAGE
           docker stop calculator-flask-staging || true
           docker rm calculator-flask-staging || true
-          docker run -d --name calculator-flask-staging -p 5001:5000 $IMAGE
+          docker run -d --name calculator-flask-staging -p 4000:5000 $IMAGE
 
   deploy-production:
     runs-on: self-hosted
@@ -79,4 +79,5 @@ jobs:
           docker pull $IMAGE
           docker stop calculator-flask-prod || true
           docker rm calculator-flask-prod || true
-          docker run -d --name calculator-flask-prod -p 5002:5000 $IMAGE
+          docker run -d --name calculator-flask-prod -p 5000:5000 $IMAGE
+
