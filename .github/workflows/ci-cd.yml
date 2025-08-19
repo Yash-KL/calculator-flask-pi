@@ -44,7 +44,7 @@ jobs:
     steps:
       - name: Deploy QA Container
         run: |
-          IMAGE="ghcr.io/$OWNER_LC/calculator-flask:latest"
+          IMAGE="ghcr.io/${{ github.repository_owner }}/calculator-flask:latest"
           echo "Deploying $IMAGE"
           docker pull $IMAGE
           docker stop calculator-flask-qa || true
@@ -58,7 +58,7 @@ jobs:
     steps:
       - name: Deploy Staging Container
         run: |
-          IMAGE="ghcr.io/$OWNER_LC/calculator-flask:latest"
+          IMAGE="ghcr.io/${{ github.repository_owner }}/calculator-flask:latest"
           docker pull $IMAGE
           docker stop calculator-flask-staging || true
           docker rm calculator-flask-staging || true
@@ -71,9 +71,10 @@ jobs:
     steps:
       - name: Deploy Production Container
         run: |
-          IMAGE="ghcr.io/$OWNER_LC/calculator-flask:latest"
+          IMAGE="ghcr.io/${{ github.repository_owner }}/calculator-flask:latest"
           docker pull $IMAGE
           docker stop calculator-flask-prod || true
           docker rm calculator-flask-prod || true
           docker run -d --name calculator-flask-prod -p 5002:5000 $IMAGE
+
 
