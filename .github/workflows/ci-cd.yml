@@ -44,6 +44,8 @@ jobs:
   deploy-qa:
     runs-on: self-hosted
     needs: build
+    outputs:
+      owner_lc: ${{ needs.build.outputs.owner_lc }}
     environment: QA
     steps:
       - name: Deploy QA Container
@@ -57,12 +59,12 @@ jobs:
 
   deploy-staging:
     runs-on: self-hosted
-    needs: build # Change this to depend on 'build'
+    needs: deploy-qa # The dependency is correctly set to 'deploy-qa'
     environment: Staging
     steps:
       - name: Deploy Staging Container
         run: |
-          IMAGE="ghcr.io/${{ needs.build.outputs.owner_lc }}/calculator-flask:latest"
+          IMAGE="ghcr.io/${{ needs.deploy-qa.outputs.owner_lc }}/calculator-flask:latest"
           docker pull $IMAGE
           docker stop calculator-flask-staging || true
           docker rm calculator-flask-staging || true
@@ -70,14 +72,13 @@ jobs:
 
   deploy-production:
     runs-on: self-hosted
-    needs: deploy-staging # This dependency is fine to keep
+    needs: deploy-staging
     environment: Production
     steps:
       - name: Deploy Production Container
         run: |
-          IMAGE="ghcr.io/${{ needs.build.outputs.owner_lc }}/calculator-flask:latest"
+          IMAGE="ghcr.io/${{ needs.deploy-staging.outputs.owner_lc }}/calculator-flask:latest"
           docker pull $IMAGE
           docker stop calculator-flask-prod || true
           docker rm calculator-flask-prod || true
           docker run -d --name calculator-flask-prod -p 5000:5000 $IMAGE
-
