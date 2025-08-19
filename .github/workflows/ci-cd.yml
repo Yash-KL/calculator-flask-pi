@@ -45,7 +45,7 @@ jobs:
   deploy-qa:
     needs: build
     runs-on: self-hosted
-    environment: qa   # 🔐 Restrict to QA team in repo settings
+    environment: QA   # 🔐 Restrict to QA team in repo settings
 
     steps:
       - name: Deploy to QA
@@ -86,3 +86,4 @@ jobs:
           docker stop calculator-flask || true
           docker rm calculator-flask || true
           docker run -d --name calculator-flask -p 5000:5000 ghcr.io/${{ env.OWNER_LC }}/calculator-flask:latest
+
