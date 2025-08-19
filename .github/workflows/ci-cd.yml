@@ -2,88 +2,63 @@ name: Multi-Environment CI/CD
 
 on:
   push:
-    branches: [ "main" ]
-  workflow_dispatch:  # allow manual triggers
+    branches:
+      - main
 
 jobs:
-  # -----------------------------
-  # 1. Build Docker Image
-  # -----------------------------
   build:
-    runs-on: self-hosted
-
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Log in to GitHub Container Registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build Docker image
+        run: docker build -t ghcr.io/${{ github.repository_owner }}/calculator-flask:latest .
 
-      - name: Set lowercase owner
-        run: echo "OWNER_LC=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
+      - name: Push Docker image
+        run: docker push ghcr.io/${{ github.repository_owner }}/calculator-flask:latest
 
-      - name: Build & Push Docker image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          platforms: linux/arm64
-          tags: |
-            ghcr.io/${{ env.OWNER_LC }}/calculator-flask:${{ github.sha }}
-            ghcr.io/${{ env.OWNER_LC }}/calculator-flask:latest
-
-  # -----------------------------
-  # 2. Deploy to QA
-  # -----------------------------
   deploy-qa:
-    needs: build
     runs-on: self-hosted
-    environment: QA   # 🔐 Restrict to QA team in repo settings
-
+    needs: build
+    environment: QA
     steps:
       - name: Deploy to QA
         run: |
-          docker pull ghcr.io/${{ env.OWNER_LC }}/calculator-flask:latest
-          docker stop calculator-flask || true
-          docker rm calculator-flask || true
-          docker run -d --name calculator-flask -p 5000:5000 ghcr.io/${{ env.OWNER_LC }}/calculator-flask:latest
+          IMAGE="ghcr.io/${{ github.repository_owner }}/calculator-flask:latest"
+          echo "Using image: $IMAGE"
+          docker pull $IMAGE
+          docker stop calculator-flask-qa || true
+          docker rm calculator-flask-qa || true
+          docker run -d --name calculator-flask-qa -p 5000:5000 $IMAGE
 
-  # -----------------------------
-  # 3. Deploy to Staging
-  # -----------------------------
   deploy-staging:
-    needs: deploy-qa
     runs-on: self-hosted
-    environment: staging   # 🔐 Restrict to Staging team in repo settings
-
+    needs: deploy-qa
+    environment: staging
     steps:
       - name: Deploy to Staging
         run: |
-          docker pull ghcr.io/${{ env.OWNER_LC }}/calculator-flask:latest
-          docker stop calculator-flask || true
-          docker rm calculator-flask || true
-          docker run -d --name calculator-flask -p 5000:5000 ghcr.io/${{ env.OWNER_LC }}/calculator-flask:latest
+          IMAGE="ghcr.io/${{ github.repository_owner }}/calculator-flask:latest"
+          echo "Using image: $IMAGE"
+          docker pull $IMAGE
+          docker stop calculator-flask-staging || true
+          docker rm calculator-flask-staging || true
+          docker run -d --name calculator-flask-staging -p 5001:5000 $IMAGE
 
-  # -----------------------------
-  # 4. Deploy to Production
-  # -----------------------------
   deploy-production:
-    needs: deploy-staging
     runs-on: self-hosted
-    environment: production   # 🔐 Restrict to Prod team in repo settings
-
+    needs: deploy-staging
+    environment: production
     steps:
       - name: Deploy to Production
         run: |
-          docker pull ghcr.io/${{ env.OWNER_LC }}/calculator-flask:latest
-          docker stop calculator-flask || true
-          docker rm calculator-flask || true
-          docker run -d --name calculator-flask -p 5000:5000 ghcr.io/${{ env.OWNER_LC }}/calculator-flask:latest
-
+          IMAGE="ghcr.io/${{ github.repository_owner }}/calculator-flask:latest"
+          echo "Using image: $IMAGE"
+          docker pull $IMAGE
+          docker stop calculator-flask-prod || true
+          docker rm calculator-flask-prod || true
+          docker run -d --name calculator-flask-prod -p 5002:5000 $IMAGE
