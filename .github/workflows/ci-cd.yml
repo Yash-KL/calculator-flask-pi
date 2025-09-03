@@ -81,8 +81,14 @@
 name: CI-CD
 
 on:
-  workflow_dispatch:   # Allow manual trigger with inputs
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
     inputs:
+      environment:
+        description: "Target environment (qa/staging/prod)"
+        required: true
+        default: "qa"
       image_tag:
         description: "Docker image tag"
         required: true
@@ -92,12 +98,9 @@ on:
         required: false
         default: "1"
       debug_mode:
-        description: "Enable debug mode (true/false)"
+        description: "Enable debug logging"
         required: false
         default: "false"
-
-  push:
-    branches: [ "main" ]
 
 jobs:
   build:
@@ -187,4 +190,5 @@ jobs:
             -e DEBUG=${{ github.event.inputs.debug_mode }} \
             -p 5001:5000 \
             $IMAGE
+
 
