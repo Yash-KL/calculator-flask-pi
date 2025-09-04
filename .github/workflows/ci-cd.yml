@@ -315,8 +315,8 @@ jobs:
             -p ${PORT}:5000 \
             "$IMAGE"
 
-      (Optional) 🔔 Notify UI about QA success/failure → uncomment if you want the banner to advance automatically
-      - name: Notify UI: QA success
+      #(Optional) 🔔 Notify UI about QA success/failure → uncomment if you want the banner to advance automatically
+      - name: Notify UI - QA success
         if: ${{ success() && github.event.inputs.environment == 'qa' }}
         run: |
           curl -s -X POST "${{ secrets.NOTIFY_URL }}" \
@@ -324,14 +324,11 @@ jobs:
             -H "Content-Type: application/json" \
             -d '{"type":"deploy","env":"qa","status":"success"}'
       
-      - name: Notify UI: QA failed
+      - name: Notify UI - QA failed
         if: ${{ failure() && github.event.inputs.environment == 'qa' }}
         run: |
           curl -s -X POST "${{ secrets.NOTIFY_URL }}" \
             -H "X-Notify-Token: ${{ secrets.NOTIFY_TOKEN }}" \
             -H "Content-Type: application/json" \
             -d '{"type":"deploy","env":"qa","status":"failure"}'
-
-
-
 
