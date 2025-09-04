@@ -78,6 +78,126 @@
 #           docker run -d --name calculator-flask-prod -p 5001:5000 $IMAGE
 
 
+# name: CI-CD
+
+# on:
+#   push:
+#     branches: [ "main" ]
+#   workflow_dispatch:
+#     inputs:
+#       environment:
+#         description: "Target environment (qa/staging/prod)"
+#         required: true
+#         default: "qa"
+#       image_tag:
+#         description: "Docker image tag"
+#         required: true
+#         default: "latest"
+#       replicas:
+#         description: "Number of replicas"
+#         required: false
+#         default: "1"
+#       debug_mode:
+#         description: "Enable debug logging"
+#         required: false
+#         default: "false"
+
+# jobs:
+#   build:
+#     runs-on: self-hosted
+#     outputs:
+#       owner_lc: ${{ steps.set_owner.outputs.owner_lc }}
+#     steps:
+#       - name: Checkout repository
+#         uses: actions/checkout@v4
+
+#       - name: Set up Docker Buildx
+#         uses: docker/setup-buildx-action@v3
+
+#       - name: Log in to GHCR
+#         uses: docker/login-action@v3
+#         with:
+#           registry: ghcr.io
+#           username: ${{ github.actor }}
+#           password: ${{ secrets.GITHUB_TOKEN }}
+
+#       - name: Set lowercase owner
+#         id: set_owner
+#         run: |
+#           echo "OWNER_LC=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
+#           echo "owner_lc=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_OUTPUT
+
+#       - name: Build and Push Docker image
+#         uses: docker/build-push-action@v6
+#         with:
+#           context: .
+#           push: true
+#           platforms: linux/arm64
+#           tags: |
+#             ghcr.io/${{ env.OWNER_LC }}/calculator-flask:${{ github.event.inputs.image_tag || 'latest' }}
+#             ghcr.io/${{ env.OWNER_LC }}/calculator-flask:latest
+
+#   deploy-qa:
+#     runs-on: self-hosted
+#     needs: build
+#     environment: QA
+#     steps:
+#       - name: Deploy QA Container
+#         run: |
+#           IMAGE="ghcr.io/${{ needs.build.outputs.owner_lc }}/calculator-flask:${{ github.event.inputs.image_tag || 'latest' }}"
+#           echo "Deploying QA with $IMAGE"
+#           docker pull $IMAGE
+#           docker stop calculator-flask-qa || true
+#           docker rm calculator-flask-qa || true
+#           docker run -d \
+#             --name calculator-flask-qa \
+#             -e DEBUG=${{ github.event.inputs.debug_mode }} \
+#             -p 3000:5000 \
+#             $IMAGE
+
+#   deploy-staging:
+#     runs-on: self-hosted
+#     needs: deploy-qa
+#     environment: Staging
+#     steps:
+#       - name: Deploy Staging Container
+#         run: |
+#           IMAGE="ghcr.io/${{ needs.build.outputs.owner_lc }}/calculator-flask:${{ github.event.inputs.image_tag || 'latest' }}"
+#           echo "Deploying Staging with $IMAGE"
+#           docker pull $IMAGE
+#           docker stop calculator-flask-staging || true
+#           docker rm calculator-flask-staging || true
+#           docker run -d \
+#             --name calculator-flask-staging \
+#             -e DEBUG=${{ github.event.inputs.debug_mode }} \
+#             -p 4000:5000 \
+#             $IMAGE
+
+#   deploy-production:
+#     runs-on: self-hosted
+#     needs: deploy-staging
+#     environment: Production
+#     steps:
+#       - name: Deploy Production Container
+#         run: |
+#           IMAGE="ghcr.io/${{ needs.build.outputs.owner_lc }}/calculator-flask:${{ github.event.inputs.image_tag || 'latest' }}"
+#           echo "Deploying Production with $IMAGE"
+#           docker pull $IMAGE
+#           docker stop calculator-flask-prod || true
+#           docker rm calculator-flask-prod || true
+#           docker run -d \
+#             --name calculator-flask-prod \
+#             -e DEBUG=${{ github.event.inputs.debug_mode }} \
+#             -p 5001:5000 \
+#             $IMAGE
+
+
+
+
+
+
+
+
 name: CI-CD
 
 on:
@@ -86,30 +206,43 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: "Target environment (qa/staging/prod)"
+        description: "Target environment (qa/staging/production)"
         required: true
         default: "qa"
       image_tag:
-        description: "Docker image tag"
+        description: "Docker image tag to deploy (e.g., short SHA or v1.2.3)"
         required: true
         default: "latest"
-      replicas:
-        description: "Number of replicas"
-        required: false
-        default: "1"
       debug_mode:
-        description: "Enable debug logging"
+        description: "Enable app debug logging"
         required: false
         default: "false"
 
 jobs:
-  build:
+  # ========= BUILD ONLY (runs only on push) =========
+  build_on_push:
+    if: ${{ github.event_name == 'push' }}
     runs-on: self-hosted
     outputs:
       owner_lc: ${{ steps.set_owner.outputs.owner_lc }}
+      image_tag: ${{ steps.meta.outputs.image_tag }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Compute image tag (short SHA)
+        id: meta
+        run: |
+          TAG="$(echo "${GITHUB_SHA}" | cut -c1-7)"
+          echo "IMAGE_TAG=${TAG}" >> $GITHUB_ENV
+          echo "image_tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "Using image tag: ${TAG}"
+
+      - name: Set lowercase owner
+        id: set_owner
+        run: |
+          echo "OWNER_LC=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
+          echo "owner_lc=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_OUTPUT
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -121,12 +254,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set lowercase owner
-        id: set_owner
-        run: |
-          echo "OWNER_LC=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
-          echo "owner_lc=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_OUTPUT
-
       - name: Build and Push Docker image
         uses: docker/build-push-action@v6
         with:
@@ -134,61 +261,76 @@ jobs:
           push: true
           platforms: linux/arm64
           tags: |
-            ghcr.io/${{ env.OWNER_LC }}/calculator-flask:${{ github.event.inputs.image_tag || 'latest' }}
+            ghcr.io/${{ env.OWNER_LC }}/calculator-flask:${{ env.IMAGE_TAG }}
             ghcr.io/${{ env.OWNER_LC }}/calculator-flask:latest
 
-  deploy-qa:
-    runs-on: self-hosted
-    needs: build
-    environment: QA
-    steps:
-      - name: Deploy QA Container
+      # 🔔 Notify your UI that new code is ready → “Waiting for QA deploy…”
+      - name: Notify UI: push detected (QA pending)
         run: |
-          IMAGE="ghcr.io/${{ needs.build.outputs.owner_lc }}/calculator-flask:${{ github.event.inputs.image_tag || 'latest' }}"
-          echo "Deploying QA with $IMAGE"
-          docker pull $IMAGE
-          docker stop calculator-flask-qa || true
-          docker rm calculator-flask-qa || true
-          docker run -d \
-            --name calculator-flask-qa \
-            -e DEBUG=${{ github.event.inputs.debug_mode }} \
-            -p 3000:5000 \
-            $IMAGE
+          curl -s -X POST "${{ secrets.NOTIFY_URL }}" \
+            -H "X-Notify-Token: ${{ secrets.NOTIFY_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{"type":"push","branch":"${{ github.ref_name }}","commit":"${{ github.sha }}"}'
 
-  deploy-staging:
+  # ========= DEPLOY ONLY (runs only when manually triggered or via your UI app) =========
+  deploy:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     runs-on: self-hosted
-    needs: deploy-qa
-    environment: Staging
     steps:
-      - name: Deploy Staging Container
-        run: |
-          IMAGE="ghcr.io/${{ needs.build.outputs.owner_lc }}/calculator-flask:${{ github.event.inputs.image_tag || 'latest' }}"
-          echo "Deploying Staging with $IMAGE"
-          docker pull $IMAGE
-          docker stop calculator-flask-staging || true
-          docker rm calculator-flask-staging || true
-          docker run -d \
-            --name calculator-flask-staging \
-            -e DEBUG=${{ github.event.inputs.debug_mode }} \
-            -p 4000:5000 \
-            $IMAGE
+      - name: Set lowercase owner
+        run: echo "OWNER_LC=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
 
-  deploy-production:
-    runs-on: self-hosted
-    needs: deploy-staging
-    environment: Production
-    steps:
-      - name: Deploy Production Container
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Determine target port by environment
+        id: ports
+        shell: bash
         run: |
-          IMAGE="ghcr.io/${{ needs.build.outputs.owner_lc }}/calculator-flask:${{ github.event.inputs.image_tag || 'latest' }}"
-          echo "Deploying Production with $IMAGE"
-          docker pull $IMAGE
-          docker stop calculator-flask-prod || true
-          docker rm calculator-flask-prod || true
+          ENV="${{ github.event.inputs.environment }}"
+          case "$ENV" in
+            qa) PORT=3000 ;;
+            staging) PORT=4000 ;;
+            production) PORT=5001 ;;
+            *) echo "Unknown environment: $ENV"; exit 1 ;;
+          esac
+          echo "PORT=$PORT" >> $GITHUB_ENV
+          echo "CONTAINER=calculator-flask-$ENV" >> $GITHUB_ENV
+
+      - name: Deploy container
+        shell: bash
+        run: |
+          IMAGE="ghcr.io/${{ env.OWNER_LC }}/calculator-flask:${{ github.event.inputs.image_tag }}"
+          echo "Deploying $IMAGE to ${{ github.event.inputs.environment }} on port ${PORT}"
+          docker pull "$IMAGE"
+          docker stop "${CONTAINER}" || true
+          docker rm "${CONTAINER}" || true
           docker run -d \
-            --name calculator-flask-prod \
+            --name "${CONTAINER}" \
             -e DEBUG=${{ github.event.inputs.debug_mode }} \
-            -p 5001:5000 \
-            $IMAGE
+            -p ${PORT}:5000 \
+            "$IMAGE"
+
+      (Optional) 🔔 Notify UI about QA success/failure → uncomment if you want the banner to advance automatically
+      - name: Notify UI: QA success
+        if: ${{ success() && github.event.inputs.environment == 'qa' }}
+        run: |
+          curl -s -X POST "${{ secrets.NOTIFY_URL }}" \
+            -H "X-Notify-Token: ${{ secrets.NOTIFY_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{"type":"deploy","env":"qa","status":"success"}'
+      
+      - name: Notify UI: QA failed
+        if: ${{ failure() && github.event.inputs.environment == 'qa' }}
+        run: |
+          curl -s -X POST "${{ secrets.NOTIFY_URL }}" \
+            -H "X-Notify-Token: ${{ secrets.NOTIFY_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{"type":"deploy","env":"qa","status":"failure"}'
+
 
 
