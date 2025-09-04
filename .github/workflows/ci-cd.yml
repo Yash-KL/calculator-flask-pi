@@ -265,7 +265,7 @@ jobs:
             ghcr.io/${{ env.OWNER_LC }}/calculator-flask:latest
 
       # 🔔 Notify your UI that new code is ready → “Waiting for QA deploy…”
-      - name: Notify UI: push detected (QA pending)
+      - name: Notify UI - push detected (QA pending)
         run: |
           curl -s -X POST "${{ secrets.NOTIFY_URL }}" \
             -H "X-Notify-Token: ${{ secrets.NOTIFY_TOKEN }}" \
@@ -331,6 +331,7 @@ jobs:
             -H "X-Notify-Token: ${{ secrets.NOTIFY_TOKEN }}" \
             -H "Content-Type: application/json" \
             -d '{"type":"deploy","env":"qa","status":"failure"}'
+
 
 
 
